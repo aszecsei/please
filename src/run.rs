@@ -93,15 +93,54 @@ pub fn run() {
         2 => log::LevelFilter::Debug,
         _ => log::LevelFilter::Trace,
     };
-    log::set_logger(&loggy::Loggy {
-        prefix: "please",
-        show_time: false,
-    }).expect("unable to set up logger");
-    log::set_max_level(log_level);
+    
+    let file_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .chain(fern::log_file("please.log").expect("failed to create log file"))
+        .level(log::LevelFilter::Trace);
+
+    let stderr_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            let subtle = console::Style::new().dim();
+            let level_style = match record.level() {
+                log::Level::Error => console::Style::new().red().reverse(),
+                log::Level::Warn => console::Style::new().yellow(),
+                log::Level::Info => console::Style::new().blue(),
+                log::Level::Debug => console::Style::new().magenta(),
+                log::Level::Trace => console::Style::new().cyan(),
+            };
+            let level_part = level_style.apply_to(format!("[{}]", record.level()));
+            let file_part = if record.level() >= log::Level::Debug || cfg!(debug_assertions) {
+                subtle.apply_to(format!(" {} > {}:{} > ", record.target(), record.file().unwrap_or(""), record.line().unwrap_or(0)))
+            } else {
+                subtle.apply_to(String::from(" "))
+            };
+            out.finish(format_args!(
+                "{}{}{}",
+                level_part,
+                file_part,
+                message,
+            ))
+        })
+        .level(log_level)
+        .chain(std::io::stderr());
+    
+    fern::Dispatch::new()
+        .chain(file_config)
+        .chain(stderr_config)
+        .apply().expect("unable to instantiate logger");
+
+    log::error!("Example error");
+    log::warn!("Example warning");
+    log::debug!("{:#?}", opt);
 
     log::info!("Looking for pleasefile...");
-
-    let cyan = console::Style::new().cyan();
-
-    println!("{}", cyan.apply_to(&format!("{:#?}", opt)));
 }
