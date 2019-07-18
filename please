@@ -1,1 +1,6 @@
-Hello, world!
+build:
+    @run cargo build --release
+
+run:
+    build
+    @run ./target/release/please
