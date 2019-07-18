@@ -1,3 +1,5 @@
+use failure::ResultExt;
+
 use structopt::clap::Shell;
 use structopt::StructOpt;
 use strum_macros::{EnumString, EnumVariantNames};
@@ -16,7 +18,7 @@ enum Color {
     Never
 }
 
-/// A polite task runner
+/// a polite task runner.
 #[derive(StructOpt, Debug)]
 #[structopt(name = "please")]
 struct Opt {
@@ -56,6 +58,10 @@ struct Opt {
 
     // Options
 
+    /// Generates completion for the specified shell
+    #[structopt(long, name = "SHELL", raw(possible_values = "&Shell::variants()"), case_insensitive = true)]
+    completions: Option<Shell>,
+
     /// Print colorful output
     #[structopt(long, name = "COLOR", raw(possible_values = "&Color::variants()"), case_insensitive = true, default_value = "auto")]
     color: Color,
@@ -69,7 +75,7 @@ struct Opt {
     show: Option<String>,
 
     /// Use <WORKING-DIRECTORY> as working directory.
-    #[structopt(long, short = "d", name = "WORKING-DIRECTORY", parse(from_os_str))]
+    #[structopt(long = "working-directory", short = "d", name = "WORKING-DIRECTORY", parse(from_os_str))]
     working_directory: Option<PathBuf>,
 
     // Arguments
@@ -79,9 +85,18 @@ struct Opt {
 }
 
 /// Runs the program
-pub fn run() {
-    Opt::clap().gen_completions(env!("CARGO_PKG_NAME"), Shell::Bash, "target");
+pub fn run() -> Result<(), failure::Error> {
+    human_panic::setup_panic!();
     let opt = Opt::from_args();
+
+    if let Some(shell) = opt.completions {
+        Opt::clap().gen_completions_to(
+            env!("CARGO_PKG_NAME"),
+            shell,
+            &mut std::io::stdout()
+        );
+        return Ok(());
+    }
 
     if opt.color != Color::Auto {
         console::set_colors_enabled(opt.color == Color::Always);
@@ -104,7 +119,7 @@ pub fn run() {
                 message
             ))
         })
-        .chain(fern::log_file("please.log").expect("failed to create log file"))
+        .chain(fern::log_file("please.log")?)
         .level(log::LevelFilter::Trace);
 
     let stderr_config = fern::Dispatch::new()
@@ -119,9 +134,9 @@ pub fn run() {
             };
             let level_part = level_style.apply_to(format!("[{}]", record.level()));
             let file_part = if record.level() >= log::Level::Debug || cfg!(debug_assertions) {
-                subtle.apply_to(format!(" {} > {}:{} > ", record.target(), record.file().unwrap_or(""), record.line().unwrap_or(0)))
+                subtle.apply_to(format!("\t{}\t> {}:{}\t> ", record.target(), record.file().unwrap_or(""), record.line().unwrap_or(0)))
             } else {
-                subtle.apply_to(String::from(" "))
+                subtle.apply_to(String::from("\t"))
             };
             out.finish(format_args!(
                 "{}{}{}",
@@ -136,11 +151,37 @@ pub fn run() {
     fern::Dispatch::new()
         .chain(file_config)
         .chain(stderr_config)
-        .apply().expect("unable to instantiate logger");
+        .apply()
+        .with_context(|_| "Unable to instantiate logger")?;
 
-    log::error!("Example error");
-    log::warn!("Example warning");
     log::debug!("{:#?}", opt);
 
     log::info!("Looking for pleasefile...");
+
+    let mut parsed_files = Vec::new();
+    let mut cwd = std::env::current_dir()
+        .with_context(|_| "Unable to read current directory")?;
+    loop {
+        let filename = cwd.join("please");
+
+        log::debug!("Looking for {:?}", filename);
+
+        let file = std::fs::read_to_string(filename);
+        if let Ok(file) = file {
+            // TODO: Parse file
+
+            parsed_files.push(file);
+        }
+
+        let try_parent = cwd.parent();
+
+        if try_parent.is_none() {
+            break;
+        }
+        cwd = try_parent.unwrap().to_path_buf();
+    }
+
+    log::info!("Parsed {} files", parsed_files.len());
+
+    Ok(())
 }
