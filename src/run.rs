@@ -1,3 +1,5 @@
+use crate::error;
+
 use failure::ResultExt;
 
 use structopt::clap::Shell;
@@ -124,25 +126,43 @@ pub fn run() -> Result<(), failure::Error> {
 
     let stderr_config = fern::Dispatch::new()
         .format(|out, message, record| {
-            let subtle = console::Style::new().dim();
+            use std::fmt::Write;
+
+            let subtle = console::Style::new().white().dim();
             let level_style = match record.level() {
-                log::Level::Error => console::Style::new().red().reverse(),
+                log::Level::Error => console::Style::new().red(),
                 log::Level::Warn => console::Style::new().yellow(),
                 log::Level::Info => console::Style::new().blue(),
                 log::Level::Debug => console::Style::new().magenta(),
                 log::Level::Trace => console::Style::new().cyan(),
             };
-            let level_part = level_style.apply_to(format!("[{}]", record.level()));
-            let file_part = if record.level() >= log::Level::Debug || cfg!(debug_assertions) {
-                subtle.apply_to(format!("\t{}\t> {}:{}\t> ", record.target(), record.file().unwrap_or(""), record.line().unwrap_or(0)))
-            } else {
-                subtle.apply_to(String::from("\t"))
-            };
+            let mut level_text = match record.level() {
+                log::Level::Debug => "DEBG",
+                log::Level::Error => "ERRO",
+                log::Level::Info => "INFO",
+                log::Level::Trace => "TRCE",
+                log::Level::Warn => "WARN",
+            }.to_string();
+            
+            let mut msg = String::with_capacity(128);
+            write!(&mut msg, "{}", message).unwrap();
+            let mut buffer = String::with_capacity(128 + msg.len());
+            for (index, line) in msg.lines().enumerate() {
+                if index > 0 {
+                    level_text = level_text.to_lowercase();
+                }
+                let level_part = level_style.apply_to(level_text.clone());
+                let file_part = if record.level() >= log::Level::Debug || cfg!(debug_assertions) {
+                    subtle.apply_to(format!("\t{}\t> {}:{}\t> ", record.target(), record.file().unwrap_or(""), record.line().unwrap_or(0)))
+                } else {
+                    subtle.apply_to(String::from("\t"))
+                };
+                writeln!(&mut buffer, "{}{}{}", level_part, file_part, line).unwrap();
+            }
+
             out.finish(format_args!(
-                "{}{}{}",
-                level_part,
-                file_part,
-                message,
+                "{}",
+                buffer.trim_end()
             ))
         })
         .level(log_level)
@@ -166,11 +186,14 @@ pub fn run() -> Result<(), failure::Error> {
 
         log::debug!("Looking for {:?}", filename);
 
-        let file = std::fs::read_to_string(filename);
+        let file = std::fs::read_to_string(&filename);
         if let Ok(file) = file {
             // TODO: Parse file
 
-            parsed_files.push(file);
+            parsed_files.push(file.clone());
+            let filename_string = filename.to_string_lossy();
+            let tokens = crate::lexer::Lexer::lex(&file, &filename_string).with_context(|_| "Unable to lex source file")?;
+            log::debug!("Tokens: {:?}", tokens);
         }
 
         let try_parent = cwd.parent();

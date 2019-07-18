@@ -2,19 +2,19 @@
 
 #![deny(missing_docs)]
 
-fn main() -> Result<(), failure::Error> {
+fn main() {
     let result = please::run();
     if let Err(err) = &result {
         let fail = err.as_fail();
-        log::error!("{}", fail);
+        log::error!("{}", err);
         for cause in fail.iter_causes() {
-            log::info!("caused by {}", cause);
+            log::error!("{}", cause);
         }
         if let Ok(x) = std::env::var("RUST_BACKTRACE") {
             if x != "0" {
                 log::debug!("{}", err.backtrace());
             }
         }
+        std::process::exit(1);
     }
-    result
 }

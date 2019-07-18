@@ -15,3 +15,5 @@ chrono = "0.4.7"
 human-panic = "1.0.1"
 failure = "0.1.5"
 internship = "0.6.0"
+insta = "0.8.1"
+serde = { version = "1.0.97", features = ["derive"] }
