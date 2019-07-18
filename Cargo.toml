@@ -1,14 +1,16 @@
 [package]
 name = "please"
 version = "0.1.0"
-authors = ["Alic Szecsei <alszecse@microsoft.com>"]
+authors = ["Alic Szecsei <alic.szecsei@microsoft.com>"]
 edition = "2018"
 
 [dependencies]
-structopt = "0.2.18"
+structopt = { version = "0.2.18", features = ["suggestions", "color"] }
 console = "0.7.7"
 strum = { git = "https://github.com/Peternator7/strum" }
 strum_macros = { git = "https://github.com/Peternator7/strum" }
 log = "0.4.7"
 fern = "0.5.8"
 chrono = "0.4.7"
+human-panic = "1.0.1"
+failure = "0.1.5"
